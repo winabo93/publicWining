@@ -4335,7 +4335,7 @@ function toggleQR() {
   var wasHidden = area.classList.contains('hidden');
   area.classList.toggle('hidden');
   if (wasHidden) {
-    var url = 'https://winabo93.github.io/vintosserne/?code=' + activeCode;
+    var url = 'https://winabo93.github.io/publicWining/?code=' + activeCode;
     var canvas = document.getElementById('qr-canvas');
     renderQR(canvas, url, 220, '#3D0A14', '#ffffff');
     var ud = document.getElementById('qr-url-display');
