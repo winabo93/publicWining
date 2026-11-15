@@ -1403,7 +1403,7 @@ input.lk-invalid,.field input.lk-invalid,.guess-input.lk-invalid{border-color:#f
 .hs-sc small{font:.68rem var(--f-ui);color:var(--smoke);margin-left:.15rem}
 
 /* ── HOST AUTH OVERLAY ── */
-#host-auth-overlay{display:none;position:fixed;inset:0;z-index:9998;
+#host-auth-overlay,#admin-auth-overlay{display:none;position:fixed;inset:0;z-index:9998;
   background:rgba(10,4,8,.9);backdrop-filter:blur(6px);
   align-items:center;justify-content:center;padding:1.2rem;}
 
@@ -1427,7 +1427,7 @@ header{
 }
 /* Content, overlays and sheets respect side insets (landscape) and the notch */
 .panel{padding-left:calc(1rem + var(--sal));padding-right:calc(1rem + var(--sar));}
-#welcome-overlay,#host-auth-overlay{
+#welcome-overlay,#host-auth-overlay,#admin-auth-overlay{
   padding:calc(1.2rem + var(--sat)) calc(1.2rem + var(--sar)) calc(1.2rem + var(--sab)) calc(1.2rem + var(--sal));
 }
 .wine-info-sheet{max-height:calc(100vh - var(--sat) - 12px);}
@@ -2327,6 +2327,32 @@ body.is-offline .live-on{display:none;} body.is-offline .live-off{display:inline
 </defs>
 </svg>
 <div class="app">
+
+<!-- ══════════ ADMIN AUTH OVERLAY ══════════ -->
+<div id="admin-auth-overlay" style="display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(10,4,8,.88);backdrop-filter:blur(6px);
+  align-items:center;justify-content:center;padding:1.5rem;">
+  <div style="max-width:380px;width:100%;
+    background:linear-gradient(135deg,rgba(38,29,34,.99),rgba(38,29,34,.92));
+    border:1px solid rgba(226,194,125,.4);border-radius:14px;padding:1.8rem;
+    box-shadow:0 20px 60px rgba(0,0,0,.8),inset 0 1px 0 rgba(226,194,125,.1);">
+    <div style="text-align:center;margin-bottom:1.4rem;">
+      <div style="font-size:1.8rem;margin-bottom:.35rem;"><svg class="ico"><use href="#ico-lock"/></svg></div>
+      <div style="font-family:'Newsreader',serif;font-size:1.25rem;color:var(--cream);">Admin Access</div>
+      <p style="font-family:'Schibsted Grotesk',sans-serif;font-size:.76rem;letter-spacing:.01em;text-transform:uppercase;color:var(--smoke);margin-top:.3rem;">Enter the admin password to manage tastings</p>
+    </div>
+    <div class="field" style="margin-bottom:.9rem;">
+      <label for="admin-auth-pass">Admin password</label>
+      <input type="password" id="admin-auth-pass" placeholder="Enter admin password…"
+        onkeydown="if(event.key==='Enter')submitAdminAuth()">
+    </div>
+    <div id="admin-auth-alert" class="alert"></div>
+    <div style="display:flex;gap:.6rem;margin-top:.4rem;">
+      <button class="btn btn-primary" id="admin-auth-submit" style="flex:1;" onclick="submitAdminAuth()">Unlock</button>
+      <button class="btn btn-outline" onclick="cancelAdminAuth()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════ HOST AUTH OVERLAY ══════════ -->
 <div id="host-auth-overlay" style="display:none;position:fixed;inset:0;z-index:9998;
@@ -3671,6 +3697,10 @@ var _lastNonHostTab = 'taste';
 
 var _resReturn = 'taste';
 function showTab(n, direction) {
+  if (n === 'host' && !_hasAdminAuth()) {
+    requireAdmin(function() { showTab(n, direction); });
+    return;
+  }
   if (n !== 'taste') stopTasteHomeLive();
   else if (!tasteCode) setTimeout(function(){ if (_homeVisible()) startTasteHomeLive(); }, 0);
   if (n === 'results') {
@@ -3765,6 +3795,63 @@ async function hashPassword(pw) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+var _pendingAdminAction = null, _adminAuthBusy = false;
+function _hasAdminAuth() {
+  try { return sessionStorage.getItem('vino_admin_auth') === '1'; } catch (e) { return false; }
+}
+function requireAdmin(action) {
+  if (_hasAdminAuth()) { action(); return; }
+  _pendingAdminAction = action;
+  var overlay = document.getElementById('admin-auth-overlay');
+  if (!overlay) { console.error('Admin auth overlay is missing.'); return; }
+  document.getElementById('admin-auth-pass').value = '';
+  document.getElementById('admin-auth-alert').className = 'alert';
+  overlay.style.display = 'flex';
+  setTimeout(function() { document.getElementById('admin-auth-pass').focus(); }, 100);
+}
+async function submitAdminAuth() {
+  if (_adminAuthBusy) return;
+  var input = document.getElementById('admin-auth-pass');
+  var password = input.value;
+  if (!password) { showAlert('admin-auth-alert', 'error', 'Enter the admin password.'); input.focus(); return; }
+  var button = document.getElementById('admin-auth-submit');
+  _adminAuthBusy = true;
+  if (button) button.disabled = true;
+  try {
+    if (!useCloud) throw new Error('Realtime Database is unavailable.');
+    var config = await fbGet('adminAuth');
+    var passwordHash = config && config.admin ? config.admin.passwordHash : config && config.passwordHash;
+    if (typeof passwordHash !== 'string') {
+      showAlert('admin-auth-alert', 'error', 'Admin password is not configured in the database.');
+      return;
+    }
+    if (await hashPassword(password) !== passwordHash) {
+      input.value = '';
+      showAlert('admin-auth-alert', 'error', 'Incorrect admin password.');
+      input.focus();
+      return;
+    }
+    sessionStorage.setItem('vino_admin_auth', '1');
+    document.getElementById('admin-auth-overlay').style.display = 'none';
+    input.value = '';
+    var action = _pendingAdminAction;
+    _pendingAdminAction = null;
+    if (action) action();
+  } catch (e) {
+    showAlert('admin-auth-alert', 'error', 'Could not verify admin password: ' + e.message);
+  } finally {
+    _adminAuthBusy = false;
+    if (button) button.disabled = false;
+  }
+}
+function cancelAdminAuth() {
+  _pendingAdminAction = null;
+  var overlay = document.getElementById('admin-auth-overlay');
+  if (overlay) overlay.style.display = 'none';
+  var input = document.getElementById('admin-auth-pass');
+  if (input) input.value = '';
+}
+
 function togglePassVis(inputId, btnId) {
   const inp = document.getElementById(inputId);
   const btn = document.getElementById(btnId);
@@ -3798,6 +3885,7 @@ function schemaTime(d) {
 }
 
 function openNewTasting() {
+  if (!_hasAdminAuth()) { requireAdmin(openNewTasting); return; }
   const ov = document.getElementById('ns-overlay'); if (!ov) return;
   document.getElementById('sess-name-inp').value = '';
   document.getElementById('sess-pass-inp').value = '';
@@ -3810,9 +3898,15 @@ function closeNewTasting() {
   ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); document.body.classList.remove('ns-open');
   try { document.activeElement && document.activeElement.blur(); } catch (e) {}
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeNewTasting(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  var adminOverlay = document.getElementById('admin-auth-overlay');
+  if (adminOverlay && adminOverlay.style.display === 'flex') cancelAdminAuth();
+  else closeNewTasting();
+});
 
 async function createSession() {
+  if (!_hasAdminAuth()) { requireAdmin(createSession); return; }
   const name = document.getElementById('sess-name-inp').value.trim() || 'Wine Evening';
   let host   = document.getElementById('sess-host-inp').value.trim();
   const pw   = document.getElementById('sess-pass-inp').value.trim();
@@ -8633,7 +8727,7 @@ function exitHost() {
 }
 
 // ── BOOT ──
-FB_URL = 'https://vintosserv2-default-rtdb.europe-west1.firebasedatabase.app';
+FB_URL = 'https://publicwining-default-rtdb.europe-west1.firebasedatabase.app/';
 useCloud = true;
 // setConnBar('online');
 _refreshHostFab();
@@ -8669,7 +8763,7 @@ renderHostPanel();
     <div class="welcome-logo"><svg class="ico" style="width:2.5rem;height:2.5rem;"><use href="#ico-bottle-red"/></svg></div>
     <div class="welcome-title">Vintosserne</div>
     <div class="welcome-sub">Who’s tasting?</div>
-    <div class="member-grid">
+    <!-- <div class="member-grid">
           <button class="member-btn" onclick="selectMember('Nichlas')">Nichlas</button>
           <button class="member-btn" onclick="selectMember('William')">William</button>
           <button class="member-btn" onclick="selectMember('Nikoline')">Nikoline</button>
@@ -8678,7 +8772,7 @@ renderHostPanel();
           <button class="member-btn" onclick="selectMember('Carl Christian')">Carl Christian</button>
           <button class="member-btn" onclick="selectMember('Sylvester')">Sylvester</button>
           <button class="member-btn" onclick="selectMember('Karoline')">Karoline</button>
-    </div>
+    </div> -->
     <div style="margin-top:.5rem;">
       <input type="text" id="welcome-custom" placeholder="Other name…"
         style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(226,194,125,.2);
