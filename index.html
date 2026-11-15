@@ -928,6 +928,58 @@ header p{font-family:'Schibsted Grotesk',sans-serif;font-size:.76rem;
   color:var(--pale-gold);
   transform:scale(1.02);
 }
+#welcome-overlay{
+  background:
+    radial-gradient(ellipse at 18% 18%,rgba(184,58,85,.2),transparent 42%),
+    radial-gradient(ellipse at 84% 86%,rgba(226,194,125,.08),transparent 38%),
+    rgba(10,4,8,.96);
+}
+.welcome-card{
+  max-width:420px;
+  padding:2.25rem 2rem 1.75rem;
+  background:linear-gradient(145deg,rgba(49,38,44,.98),rgba(28,21,25,.98));
+  border-color:rgba(226,194,125,.26);
+  box-shadow:0 24px 80px rgba(0,0,0,.52),inset 0 1px 0 rgba(243,236,229,.06);
+  text-align:left;
+}
+.welcome-brand{display:flex;align-items:center;justify-content:center;gap:.65rem;margin-bottom:2rem;}
+.welcome-brand .welcome-logo{display:flex;margin:0;color:var(--gold);}
+.welcome-brand-name{font-family:var(--f-label);font-size:1.02rem;color:var(--cream);}
+.welcome-brand-note{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);margin-top:.12rem;}
+.welcome-title{font-size:2rem;line-height:1.1;margin-bottom:.5rem;}
+.welcome-sub{font-size:.88rem;letter-spacing:0;text-transform:none;line-height:1.55;margin-bottom:1.5rem;}
+.welcome-form{text-align:left;}
+.welcome-label{display:block;font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:var(--smoke);margin-bottom:.45rem;}
+.welcome-input{
+  width:100%;min-height:54px;padding:.85rem 1rem;
+  background:var(--barrel);border:1px solid rgba(243,236,229,.14);border-radius:12px;
+  color:var(--cream);font:500 1rem var(--f-ui);outline:none;
+  transition:border-color .2s,box-shadow .2s,background .2s;
+}
+.welcome-input::placeholder{color:#8f8387;}
+.welcome-input:focus{border-color:var(--claret-lt);background:#382a30;box-shadow:0 0 0 3px rgba(227,120,143,.12);}
+.welcome-suggestions{display:grid;grid-template-columns:1fr 1fr;gap:.45rem;margin-top:.5rem;}
+.welcome-suggestions:empty{display:none;}
+.welcome-suggestion{
+  min-height:40px;padding:.5rem .65rem;text-align:left;
+  color:var(--cream);font:500 .84rem var(--f-ui);
+  background:rgba(243,236,229,.04);border:1px solid rgba(243,236,229,.09);border-radius:9px;
+  cursor:pointer;transition:background .15s,border-color .15s;
+}
+.welcome-suggestion:hover,.welcome-suggestion:focus-visible{background:rgba(227,120,143,.1);border-color:rgba(227,120,143,.45);}
+.welcome-continue{
+  width:100%;min-height:50px;margin-top:1.15rem;border:0;border-radius:12px;
+  background:var(--claret);color:#fff;font:600 .94rem var(--f-ui);
+  cursor:pointer;transition:background .2s,transform .15s,opacity .2s;
+}
+.welcome-continue:hover:not(:disabled){background:var(--deep-wine);}
+.welcome-continue:active:not(:disabled){transform:scale(.985);}
+.welcome-continue:disabled{opacity:.42;cursor:not-allowed;}
+.welcome-footnote{text-align:center;color:var(--smoke);font-size:.76rem;margin-top:1rem;}
+@media(max-width:480px){
+  #welcome-overlay{padding:1rem;}
+  .welcome-card{padding:1.8rem 1.25rem 1.4rem;}
+}
 
 /* ── RESULTS WINE IMAGE ── */
 .res-wine-img-btn{
@@ -1504,7 +1556,6 @@ header p{font-size:.76rem;color:var(--smoke);}
 #wine-info-modal{background:rgba(10,7,9,.72);}
 .wine-info-sheet{background:#221a1e;border:1px solid var(--gb);border-bottom:none;border-radius:24px 24px 0 0;}
 .wine-info-handle{background:rgba(243,236,229,.22);}
-.welcome-card{background:var(--oak);border:1px solid var(--gb);box-shadow:none;}
 .welcome-title{font-family:var(--f-label);font-weight:500;}
 .member-btn{background:var(--barrel);border:1px solid transparent;border-radius:12px;font-family:var(--f-ui);font-style:normal;font-weight:500;}
 .member-btn:active{border-color:var(--claret-lt);}
@@ -7537,6 +7588,36 @@ Be precise. Use official names. Return only the JSON object, no other text.`;
 // ═══════════════════════════════════════
 const CLUB_MEMBERS = ['Nichlas', 'William', 'Nikoline', 'Mathilde', 'Mathilda', 'Carl Christian', 'Sylvester', 'Karoline'];
 
+function updateMemberSuggestions(value) {
+  var input = document.getElementById('welcome-custom');
+  var list = document.getElementById('welcome-suggestions');
+  var button = document.getElementById('welcome-continue');
+  if (!input || !list || !button) return;
+
+  var query = (value || '').trim().toLowerCase();
+  var matches = query ? CLUB_MEMBERS.filter(function(name) {
+    return name.toLowerCase().indexOf(query) !== -1;
+  }).slice(0, 4) : [];
+  list.replaceChildren();
+  matches.forEach(function(name) {
+    var option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'welcome-suggestion';
+    option.setAttribute('role', 'option');
+    option.textContent = name;
+    option.addEventListener('click', function() {
+      input.value = name;
+      list.replaceChildren();
+      input.setAttribute('aria-expanded', 'false');
+      button.disabled = false;
+      input.focus();
+    });
+    list.appendChild(option);
+  });
+  input.setAttribute('aria-expanded', matches.length ? 'true' : 'false');
+  button.disabled = !input.value.trim();
+}
+
 function selectMember(name) {
   setTimeout(function(){ _factOffset = 0; if (typeof renderTasteHome === 'function' && !tasteCode) renderTasteHome(); }, 0);
   if (!name) return;
@@ -8738,8 +8819,12 @@ renderHostPanel();
   var saved = localStorage.getItem('vino_member_name');
   if (saved) {
     applyMemberName(saved);
-    var ov = document.getElementById('welcome-overlay');
-    if (ov) ov.style.display = 'none';
+    var hideWelcome = function() {
+      var ov = document.getElementById('welcome-overlay');
+      if (ov) ov.style.display = 'none';
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hideWelcome);
+    else hideWelcome();
   }
   // else overlay stays visible
   try { history.replaceState({ tab: 'taste' }, ''); } catch(e) {}
@@ -8759,28 +8844,27 @@ renderHostPanel();
 </script>
 
 <div id="welcome-overlay">
-  <div class="welcome-card">
-    <div class="welcome-logo"><svg class="ico" style="width:2.5rem;height:2.5rem;"><use href="#ico-bottle-red"/></svg></div>
-    <div class="welcome-title">Vintosserne</div>
-    <div class="welcome-sub">Who’s tasting?</div>
-    <!-- <div class="member-grid">
-          <button class="member-btn" onclick="selectMember('Nichlas')">Nichlas</button>
-          <button class="member-btn" onclick="selectMember('William')">William</button>
-          <button class="member-btn" onclick="selectMember('Nikoline')">Nikoline</button>
-          <button class="member-btn" onclick="selectMember('Mathilde')">Mathilde</button>
-          <button class="member-btn" onclick="selectMember('Mathilda')">Mathilda</button>
-          <button class="member-btn" onclick="selectMember('Carl Christian')">Carl Christian</button>
-          <button class="member-btn" onclick="selectMember('Sylvester')">Sylvester</button>
-          <button class="member-btn" onclick="selectMember('Karoline')">Karoline</button>
-    </div> -->
-    <div style="margin-top:.5rem;">
-      <input type="text" id="welcome-custom" placeholder="Other name…"
-        style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(226,194,125,.2);
-               border-radius:8px;padding:.6rem .85rem;color:var(--cream);
-               font-family:'Schibsted Grotesk',serif;font-size:1rem;outline:none;text-align:center;"
-        onkeydown="if(event.key==='Enter')selectMember(this.value.trim())">
+  <section class="welcome-card" aria-labelledby="welcome-title">
+    <div class="welcome-brand">
+      <div class="welcome-logo"><svg class="ico" style="width:2rem;height:2rem;"><use href="#ico-bottle-red"/></svg></div>
+      <div>
+        <div class="welcome-brand-name">Vintosserne</div>
+        <!-- <div class="welcome-brand-note">Wine tasting club</div> -->
+      </div>
     </div>
-  </div>
+    <h2 class="welcome-title" id="welcome-title">Ready to taste?</h2>
+    <!-- <p class="welcome-sub">Sign in with the name you use at tastings.</p> -->
+    <form class="welcome-form" onsubmit="event.preventDefault();selectMember(document.getElementById('welcome-custom').value)">
+      <label class="welcome-label" for="welcome-custom">Username</label>
+      <input class="welcome-input" type="text" id="welcome-custom" placeholder="Enter your name (and remember it!)"
+        autocomplete="username" autocapitalize="words" maxlength="40"
+        aria-autocomplete="list" aria-controls="welcome-suggestions" aria-expanded="false"
+        oninput="updateMemberSuggestions(this.value)">
+      <div class="welcome-suggestions" id="welcome-suggestions" role="listbox" aria-label="Suggested usernames"></div>
+      <button class="welcome-continue" id="welcome-continue" type="submit" disabled>Continue</button>
+      <p class="welcome-footnote">No password needed — just your tasting name.</p>
+    </form>
+  </section>
 </div>
 
 <div id="img-lightbox" onclick="if(event.target===this)closeImgLightbox()">
