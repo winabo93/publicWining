@@ -4173,6 +4173,12 @@ function renderOverview(s) {
       const revBtn = w.revealed
         ? `<button class="wbtn wbtn-hide" onclick="toggleReveal(${i},false)" title="Hide"><svg class="ico"><use href="#ico-blind"/></svg></button>`
         : `<button class="wbtn wbtn-reveal" onclick="toggleReveal(${i},true)" title="Reveal"><svg class="ico"><use href="#ico-reveal"/></svg></button>`;
+      const attributeControls = WINE_ATTRIBUTE_FIELDS.map(function(field) {
+        return `<label style="display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--cream);">
+          <input type="checkbox" data-attribute="${field.key}" ${wineAttributeVisible(w, field.key) ? 'checked' : ''} onchange="setWineAttributeVisibility(${i},'${field.key}',this.checked)">
+          ${escHtml(field.label)}
+        </label>`;
+      }).join('');
       const where = [w.type, w.appellation || w.region, w.country].filter(Boolean).map(escHtml).join(' · ');
       const img = w.image ? `<span class="wl-imgbox" aria-hidden="true" style="background-image:url(&quot;${escHtml(String(w.image).replace(/["'()\\]/g, encodeURIComponent))}&quot;)"></span>` : '';
       return `<div class="hl-cell ${w.revealed ? 'is-rev' : 'is-blind'}" id="wine-row-${i}">
@@ -4193,6 +4199,13 @@ function renderOverview(s) {
             ? `<button class="btn btn-outline btn-sm" onclick="toggleReveal(${i},false)"><svg class="ico"><use href="#ico-blind"/></svg> Hide</button>`
             : `<button class="btn btn-outline btn-sm hrow-reveal" onclick="toggleReveal(${i},true)"><svg class="ico"><use href="#ico-reveal"/></svg> Reveal</button>`}</div>
         </div>
+        <div style="padding:0 .75rem .65rem;">
+          <button class="btn btn-outline btn-sm" type="button" aria-expanded="false" onclick="toggleWineAttributeControls(${i},this)">Taster details</button>
+          <div id="wine-attrs-${i}" class="hidden" style="margin-top:.55rem;padding:.7rem;background:rgba(0,0,0,.18);border:1px solid var(--gb);border-radius:8px;">
+            <div style="font-size:.76rem;color:var(--smoke);margin-bottom:.55rem;">Choose which details tasters can see</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;">${attributeControls}</div>
+          </div>
+        </div>
         <div id="edit-inline-${i}" style="display:none;"></div>
       </div>`;
     }).join('') + '</div>';
@@ -4204,6 +4217,45 @@ function renderOverview(s) {
   startHostLive();
   // Start live tick for any wines with active timers
   startHostTimerTick(wines);
+}
+
+const WINE_ATTRIBUTE_FIELDS = [
+  { key: 'vintage', label: 'Vintage' },
+  { key: 'type', label: 'Type' },
+  { key: 'country', label: 'Country' },
+  { key: 'region', label: 'Region' },
+  { key: 'appellation', label: 'Appellation' },
+  { key: 'classification', label: 'Classification' },
+  { key: 'grapes', label: 'Grape(s)' },
+  { key: 'abv', label: 'Alcohol' },
+  { key: 'price', label: 'Price' },
+  { key: 'notes', label: 'Host notes' },
+  { key: 'image', label: 'Wine image' }
+];
+
+function wineAttributeVisible(wine, key) {
+  return !(wine && wine.hiddenAttributes && wine.hiddenAttributes[key]);
+}
+
+function toggleWineAttributeControls(i, button) {
+  var panel = document.getElementById('wine-attrs-' + i);
+  if (!panel) return;
+  var open = panel.classList.toggle('hidden') === false;
+  if (button) button.setAttribute('aria-expanded', String(open));
+}
+
+async function setWineAttributeVisibility(i, key, visible) {
+  if (!activeCode || !WINE_ATTRIBUTE_FIELDS.some(function(field) { return field.key === key; })) return;
+  try {
+    await dbPatch('sessions/' + activeCode, {
+      ['wines/' + i + '/hiddenAttributes/' + key]: !visible
+    });
+  } catch (e) {
+    var controls = document.getElementById('wine-attrs-' + i);
+    var checkbox = controls && controls.querySelector('input[data-attribute="' + key + '"]');
+    if (checkbox) checkbox.checked = !visible;
+    showToast('Could not update wine details. Please try again.', 'error');
+  }
 }
 
 async function toggleWineTimer(i, enabled) {
@@ -4538,15 +4590,21 @@ function wineListRow(w, i, mode, x) {
       + '<div class="wl-body"><div class="wl-bname"><svg class="ico"><use href="#ico-spy"/></svg> Wine ' + (i + 1) + '</div>'
       + '<div class="wl-sub">Hidden until revealed · ' + info + '</div></div>' + end + '</' + tag + '>';
   }
-  var sub = [w.type, w.country, w.grapes].filter(Boolean).map(escHtml).join(' · ');
+  var sub = [
+    wineAttributeVisible(w, 'type') ? w.type : '',
+    wineAttributeVisible(w, 'country') ? w.country : '',
+    wineAttributeVisible(w, 'grapes') ? w.grapes : ''
+  ].filter(Boolean).map(escHtml).join(' · ');
+  var showImage = wineAttributeVisible(w, 'image') && w.image;
+  var vintage = wineAttributeVisible(w, 'vintage') ? w.vintage : '';
   var score = tasteMode
     ? (mine ? '<div class="wl-score"><b>' + mine.score + '</b><span>/100 your rating</span></div>' : '<div class="wl-todo">Not rated yet · tap to rate</div>')
     : (x.avg !== null && x.avg !== undefined ? '<div class="wl-score"><b>' + x.avg + '</b><span>/100 avg</span></div>' : '<div class="wl-sub">No ratings yet</div>');
   var hint = '';   // ratings/guesses counts live in the wine's detail sheet
-  return '<' + tag + ' class="' + cls + (w.image ? ' has-img' : '') + '"' + act + '>'
-    + (w.image ? '<span class="wl-imgbox" aria-hidden="true" style="background-image:url(&quot;' + escHtml(String(w.image).replace(/["'()\\]/g, encodeURIComponent)) + '&quot;)"></span>' : '')
+  return '<' + tag + ' class="' + cls + (showImage ? ' has-img' : '') + '"' + act + '>'
+    + (showImage ? '<span class="wl-imgbox" aria-hidden="true" style="background-image:url(&quot;' + escHtml(String(w.image).replace(/["'()\\]/g, encodeURIComponent)) + '&quot;)"></span>' : '')
     + '<div class="wl-body"><div class="wl-num">Wine #' + (i + 1) + '</div>'
-    + '<div class="wl-name">' + escHtml(w.name) + (w.vintage ? ' ' + escHtml(w.vintage) : '') + '</div>'
+    + '<div class="wl-name">' + escHtml(w.name) + (vintage ? ' ' + escHtml(vintage) : '') + '</div>'
     + (sub ? '<div class="wl-sub">' + sub + '</div>' : '') + score + hint + '</div>' + end + '</' + tag + '>';
 }
 
@@ -4954,19 +5012,29 @@ function renderRevealArea(idx, data) {
 
     area.innerHTML = `<div class="reveal-anim">
       <div style="display:flex;align-items:flex-start;gap:1rem;">
-        ${w.image
+        ${wineAttributeVisible(w, 'image') && w.image
           ? `<img src="${w.image}" alt="${w.name}" style="width:72px;height:72px;border-radius:8px;object-fit:cover;border:2px solid var(--gold);box-shadow:0 4px 16px rgba(0,0,0,.4);flex-shrink:0;">`
-          : `<div class="wine-emblem">${TE[w.type] || '<svg class="ico"><use href="#ico-bottle-red"/></svg>'}</div>`}
+          : `<div class="wine-emblem">${wineAttributeVisible(w, 'type') ? (TE[w.type] || '<svg class="ico"><use href="#ico-bottle-red"/></svg>') : '<svg class="ico"><use href="#ico-bottle-red"/></svg>'}</div>`}
         <div>
           <div style="font-family:'Schibsted Grotesk',sans-serif;font-size:.76rem;letter-spacing:.01em;text-transform:uppercase;color:#7dffb0;margin-bottom:.25rem;">✨ Revealed by host</div>
           <div style="font-family:'Newsreader',serif;font-size:1.5rem;font-weight:700;">${w.name}</div>
-          <div style="font-style:italic;color:var(--gold);margin-top:.18rem;">${[w.vintage, w.type].filter(Boolean).join(' · ')}</div>
+          <div style="font-style:italic;color:var(--gold);margin-top:.18rem;">${[
+            wineAttributeVisible(w, 'vintage') ? w.vintage : '',
+            wineAttributeVisible(w, 'type') ? w.type : ''
+          ].filter(Boolean).map(escHtml).join(' · ')}</div>
         </div>
       </div>
-      ${w.image ? `<div class="wine-label-img-wrap"><img src="${w.image}" alt="${w.name}" class="wine-label-img"></div>` : ''}
+      ${wineAttributeVisible(w, 'image') && w.image ? `<div class="wine-label-img-wrap"><img src="${w.image}" alt="${w.name}" class="wine-label-img"></div>` : ''}
       <div class="wine-meta">
-        ${[{l:'Classification',v:w.classification},{l:'Country',v:w.country},{l:'Region',v:w.region},{l:'Appellation',v:w.appellation},{l:'Grape(s)',v:w.grapes},{l:'Alcohol',v:w.abv}]
-          .filter(m => m.v)
+        ${[
+          {k:'classification',l:'Classification',v:w.classification},
+          {k:'country',l:'Country',v:w.country},
+          {k:'region',l:'Region',v:w.region},
+          {k:'appellation',l:'Appellation',v:w.appellation},
+          {k:'grapes',l:'Grape(s)',v:w.grapes},
+          {k:'abv',l:'Alcohol',v:w.abv}
+        ]
+          .filter(m => m.v && wineAttributeVisible(w, m.k))
           .map(m => `<div class="meta-item"><div class="meta-lbl">${m.l}</div><div class="meta-val">${m.v}</div></div>`)
           .join('')}
       </div>
@@ -5297,7 +5365,7 @@ function renderResults(c, sess) {
       return wineListRow(w, i, 'results', { n: r.length });
     }
 
-    if (w.notes) notes.push({name: w.name, type: w.type, txt: w.notes});
+    if (w.notes && wineAttributeVisible(w, 'notes')) notes.push({name: w.name, type: w.type, txt: w.notes});
     var emoji = TE[w.type] || '&#x1F377;';
 
     var ratingsHTML = r.map(function(x) {
@@ -7785,20 +7853,20 @@ function showWineModal(wineOrIdx, _fromStack, ctx) {
   if (!modal || !cnt) return;
   _currentModalWine = w;
 
-  var imgHtml = w.image
+  var imgHtml = wineAttributeVisible(w, 'image') && w.image
     ? '<img src="' + w.image + '" class="wine-info-img" alt="' + w.name + '" onclick="openImgLightbox(this.src)">'
-    : '<div class="wine-info-img-placeholder">' + (TE[w.type] || '<svg class="ico" style="width:2rem;height:2rem;"><use href="#ico-bottle-red"/></svg>') + '</div>';
+    : '<div class="wine-info-img-placeholder">' + (wineAttributeVisible(w, 'type') ? (TE[w.type] || '<svg class="ico" style="width:2rem;height:2rem;"><use href="#ico-bottle-red"/></svg>') : '<svg class="ico" style="width:2rem;height:2rem;"><use href="#ico-bottle-red"/></svg>') + '</div>';
 
   var meta = [
-    {l:'Type',           v: w.type},
-    {l:'Country',        v: w.country},
-    {l:'Region',         v: w.region},
-    {l:'Appellation',    v: w.appellation},
-    {l:'Classification', v: w.classification},
-    {l:'Grape(s)',       v: w.grapes},
-    {l:'Alcohol',        v: w.abv},
-    {l:'Price',          v: w.price},
-  ].filter(function(m){ return m.v; });
+    {k:'type',           l:'Type',           v: w.type},
+    {k:'country',        l:'Country',        v: w.country},
+    {k:'region',         l:'Region',         v: w.region},
+    {k:'appellation',    l:'Appellation',    v: w.appellation},
+    {k:'classification', l:'Classification', v: w.classification},
+    {k:'grapes',         l:'Grape(s)',       v: w.grapes},
+    {k:'abv',            l:'Alcohol',        v: w.abv},
+    {k:'price',          l:'Price',          v: w.price},
+  ].filter(function(m){ return m.v && wineAttributeVisible(w, m.k); });
 
   var metaHtml = meta.length
     ? '<div class="wine-meta" style="margin-top:.9rem;">'
@@ -7816,7 +7884,7 @@ function showWineModal(wineOrIdx, _fromStack, ctx) {
       + '<span class="chev">›</span></div>'
     : '';
 
-  var notesHtml = w.notes
+  var notesHtml = w.notes && wineAttributeVisible(w, 'notes')
     ? '<div style="margin-top:.9rem;padding:.75rem .9rem;background:rgba(226,194,125,.06);border:1px solid var(--gb);border-radius:10px;">'
       + '<div style="font-family:Schibsted Grotesk,sans-serif;font-size:.76rem;letter-spacing:.01em;text-transform:uppercase;color:var(--smoke);margin-bottom:.35rem;">Host Notes</div>'
       + '<div style="font-style:italic;color:var(--pale-gold);font-size:.95rem;line-height:1.55;">' + w.notes + '</div>'
@@ -7891,7 +7959,7 @@ function showWineModal(wineOrIdx, _fromStack, ctx) {
       + '<div style="flex:1;min-width:0;">'
         + lvlLabel('Wine')
         + '<div class="wine-info-title">' + escHtml(w.name) + '</div>'
-        + (w.vintage ? '<div class="wine-info-vintage">' + escHtml(w.vintage) + '</div>' : '')
+        + (w.vintage && wineAttributeVisible(w, 'vintage') ? '<div class="wine-info-vintage">' + escHtml(w.vintage) + '</div>' : '')
         + (ctx ? '<div class="lvl-sub">' + [ctx.count ? 'Wine ' + (ctx.idx + 1) + ' of ' + ctx.count : '', ctx.session ? escHtml(ctx.session) : ''].filter(Boolean).join(' · ') + '</div>' : '')
       + '</div>'
       + sheetCloseBtn()
