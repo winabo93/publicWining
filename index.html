@@ -2021,6 +2021,39 @@ body.is-offline .live-on{display:none;} body.is-offline .live-off{display:inline
 .hl-num-blind{color:var(--lav);}
 .hl-prog{color:var(--smoke);font-size:.8rem;margin-top:.3rem;}
 .hl-prog b{color:var(--straw);font-weight:600;}
+.tv-wrap{margin:.25rem .75rem .8rem 1rem;border:1px solid rgba(227,120,143,.2);border-radius:14px;background:linear-gradient(145deg,rgba(49,38,44,.78),rgba(38,29,34,.72));overflow:hidden;}
+.tv-head{width:100%;display:flex;align-items:center;gap:.7rem;padding:.7rem .75rem;background:transparent;border:0;color:var(--cream);text-align:left;cursor:pointer;}
+.tv-head:hover{background:rgba(255,255,255,.025);}
+.tv-head:focus-visible{outline:2px solid var(--claret-lt);outline-offset:-2px;border-radius:13px;}
+.tv-icon{width:36px;height:36px;display:grid;place-items:center;flex:none;border:1px solid rgba(227,120,143,.22);border-radius:11px;background:rgba(184,58,85,.1);color:var(--claret-lt);}
+.tv-icon .ico{width:18px;height:18px;}
+.tv-head-copy{display:grid;gap:.18rem;flex:1;min-width:0;}
+.tv-title{font:600 .91rem var(--f-ui);color:var(--cream);}
+.tv-summary{font-size:.74rem;line-height:1.35;color:var(--smoke);}
+.tv-count{flex:none;padding:.32rem .55rem;border:1px solid rgba(226,194,125,.18);border-radius:999px;background:rgba(226,194,125,.09);color:var(--gold);font:600 .7rem var(--f-ui);font-variant-numeric:tabular-nums;}
+.tv-chevron{width:8px;height:8px;flex:none;border-right:1.5px solid var(--smoke);border-bottom:1.5px solid var(--smoke);transform:rotate(45deg) translateY(-2px);transition:transform .18s ease;}
+.tv-head[aria-expanded="true"] .tv-chevron{transform:rotate(225deg) translate(-1px,-1px);}
+.tv-panel{padding:.15rem .65rem .65rem;border-top:1px solid rgba(243,236,229,.07);}
+.tv-panel-intro{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.6rem .1rem .35rem;}
+.tv-panel-label{color:var(--smoke);font:600 .66rem var(--f-ui);letter-spacing:.1em;text-transform:uppercase;}
+.tv-panel-hint{color:var(--smoke);font-size:.7rem;text-align:right;}
+.tv-attribute{display:flex;align-items:center;gap:.45rem;min-height:54px;padding:.42rem .25rem;border-bottom:1px solid rgba(243,236,229,.06);}
+.tv-attribute:last-child{border-bottom:0;}
+.tv-attribute-copy{display:grid;gap:.12rem;flex:1;min-width:0;}
+.tv-attribute-label{font:500 .82rem var(--f-ui);color:var(--cream);}
+.tv-attribute-description{font-size:.69rem;color:var(--smoke);line-height:1.3;}
+.tv-state{flex:none;min-width:52px;text-align:center;padding:.23rem .38rem;border:1px solid;border-radius:999px;font:600 .61rem var(--f-ui);letter-spacing:.035em;text-transform:uppercase;}
+.tv-state.is-shown{border-color:rgba(125,255,176,.2);background:rgba(40,160,80,.11);color:#9fe0b3;}
+.tv-state.is-hidden{border-color:rgba(227,120,143,.2);background:rgba(184,58,85,.1);color:#e9a1ae;}
+.tv-switch{position:relative;width:44px;height:27px;flex:none;padding:0;border:1px solid var(--gb);border-radius:999px;background:#3a3035;cursor:pointer;transition:background .18s,border-color .18s;}
+.tv-switch span{position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:var(--cream);box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .18s cubic-bezier(.2,.8,.2,1);}
+.tv-switch[aria-checked="true"]{border-color:rgba(125,255,176,.38);background:#32724a;}
+.tv-switch[aria-checked="true"] span{transform:translateX(17px);}
+.tv-switch:focus-visible{outline:2px solid var(--claret-lt);outline-offset:3px;}
+.tv-switch:disabled{opacity:.55;cursor:wait;}
+.tv-sync{display:flex;align-items:center;gap:.42rem;padding:.65rem .2rem .1rem;color:var(--smoke);font-size:.7rem;}
+.tv-sync-dot{width:6px;height:6px;flex:none;border-radius:50%;background:#7dffb0;box-shadow:0 0 7px rgba(125,255,176,.55);}
+@media (prefers-reduced-motion:reduce){.tv-chevron,.tv-switch,.tv-switch span{transition:none;}}
 .hl-actions{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-left:1rem;padding:.55rem 1rem .65rem 0;border-top:1px solid var(--gb);}
 .hl-actions .tlwrap{display:flex;align-items:center;gap:.45rem;min-width:0;}
 .hl-actions .tl{display:flex;align-items:center;gap:.45rem;white-space:nowrap;font:500 .8rem var(--f-ui);color:var(--smoke);cursor:pointer;}
@@ -3245,6 +3278,7 @@ async function fbDelete(path) {
 async function dbPatch(path, updates) {
   Object.keys(updates).forEach(k => setLocal(path + '/' + k, updates[k]));
   saveLocal();
+  notifyLocalDbListeners(path);
   if (useCloud) {
     try { await fbPatch(path, updates); return 'synced'; }
     catch(e) { setConnBar('offline'); _outboxPut({ t: 'path', path: path, updates: updates }); return 'queued'; }
@@ -3412,7 +3446,7 @@ const _pollListeners = {};
 
 function dbListen(path, cb, opts) {
   opts = opts || {};      // { every: ms between polls (default 2000), pauseHidden: stop polling while the app is in the background }
-  if (!_pollListeners[path]) _pollListeners[path] = { callbacks: [], timer: null, lastSer: undefined, pauseHidden: !!opts.pauseHidden };
+  if (!_pollListeners[path]) _pollListeners[path] = { callbacks: [], timer: null, lastSer: undefined, pauseHidden: !!opts.pauseHidden, localRevision: 0, polling: false };
   const slot = _pollListeners[path];
   slot.callbacks.push(cb);
 
@@ -3423,9 +3457,12 @@ function dbListen(path, cb, opts) {
   }
 
   const poll = async () => {
-    if (slot.pauseHidden && document.hidden) return;
+    if ((slot.pauseHidden && document.hidden) || slot.polling) return;
+    slot.polling = true;
+    const revision = slot.localRevision;
     try {
       let v = useCloud ? await fbGet(path) : getLocal(path);
+      if (revision !== slot.localRevision) return;
       if (useCloud && v !== null) { setLocal(path, v); saveLocal(); }
       v = _overlayOutbox(path, v);
       const ser = JSON.stringify(v);
@@ -3435,6 +3472,7 @@ function dbListen(path, cb, opts) {
       }
       if (useCloud) setConnBar('online');
     } catch(e) {
+      if (revision !== slot.localRevision) return;
       setConnBar('offline');
       const v = _overlayOutbox(path, getLocal(path));
       const ser = JSON.stringify(v);
@@ -3442,6 +3480,8 @@ function dbListen(path, cb, opts) {
         slot.lastSer = ser;
         slot.callbacks.forEach(fn => { try { fn(v); } catch(e) {} });
       }
+    } finally {
+      slot.polling = false;
     }
   };
   slot.poll = poll;
@@ -3451,6 +3491,19 @@ function dbListen(path, cb, opts) {
     slot.callbacks = slot.callbacks.filter(fn => fn !== cb);
     if (!slot.callbacks.length) { clearInterval(slot.timer); delete _pollListeners[path]; }
   };
+}
+
+function notifyLocalDbListeners(path) {
+  const slot = _pollListeners[path];
+  if (!slot) return;
+  const data = _overlayOutbox(path, getLocal(path));
+  const ser = JSON.stringify(data);
+  if (ser === slot.lastSer) return;
+  slot.localRevision++;
+  slot.lastSer = ser;
+  slot.callbacks.slice().forEach(fn => {
+    try { fn(_overlayOutbox(path, getLocal(path))); } catch(e) {}
+  });
 }
 
 // Coming back to the app: refresh the paused listeners straight away
@@ -4174,11 +4227,17 @@ function renderOverview(s) {
         ? `<button class="wbtn wbtn-hide" onclick="toggleReveal(${i},false)" title="Hide"><svg class="ico"><use href="#ico-blind"/></svg></button>`
         : `<button class="wbtn wbtn-reveal" onclick="toggleReveal(${i},true)" title="Reveal"><svg class="ico"><use href="#ico-reveal"/></svg></button>`;
       const attributeControls = WINE_ATTRIBUTE_FIELDS.map(function(field) {
-        return `<label style="display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--cream);">
-          <input type="checkbox" data-attribute="${field.key}" ${wineAttributeVisible(w, field.key) ? 'checked' : ''} onchange="setWineAttributeVisibility(${i},'${field.key}',this.checked)">
-          ${escHtml(field.label)}
-        </label>`;
+        const visible = wineAttributeVisible(w, field.key);
+        return `<div class="tv-attribute" id="wine-attribute-${i}-${field.key}">
+          <div class="tv-attribute-copy">
+            <span class="tv-attribute-label">${escHtml(field.label)}</span>
+            <span class="tv-attribute-description">${escHtml(field.description)}</span>
+          </div>
+          <span data-visibility-status class="tv-state ${visible ? 'is-shown' : 'is-hidden'}">${visible ? 'Shown' : 'Hidden'}</span>
+          <button class="tv-switch" type="button" role="switch" aria-checked="${visible}" aria-label="${visible ? 'Hide' : 'Show'} ${escHtml(field.label)} ${visible ? 'from' : 'to'} tasters" onclick="setWineAttributeVisibility(${i},'${field.key}',${!visible},this)"><span aria-hidden="true"></span></button>
+        </div>`;
       }).join('');
+      const visibleAttributeCount = WINE_ATTRIBUTE_FIELDS.filter(function(field) { return wineAttributeVisible(w, field.key); }).length;
       const where = [w.type, w.appellation || w.region, w.country].filter(Boolean).map(escHtml).join(' · ');
       const img = w.image ? `<span class="wl-imgbox" aria-hidden="true" style="background-image:url(&quot;${escHtml(String(w.image).replace(/["'()\\]/g, encodeURIComponent))}&quot;)"></span>` : '';
       return `<div class="hl-cell ${w.revealed ? 'is-rev' : 'is-blind'}" id="wine-row-${i}">
@@ -4199,11 +4258,23 @@ function renderOverview(s) {
             ? `<button class="btn btn-outline btn-sm" onclick="toggleReveal(${i},false)"><svg class="ico"><use href="#ico-blind"/></svg> Hide</button>`
             : `<button class="btn btn-outline btn-sm hrow-reveal" onclick="toggleReveal(${i},true)"><svg class="ico"><use href="#ico-reveal"/></svg> Reveal</button>`}</div>
         </div>
-        <div style="padding:0 .75rem .65rem;">
-          <button class="btn btn-outline btn-sm" type="button" aria-expanded="false" onclick="toggleWineAttributeControls(${i},this)">Taster details</button>
-          <div id="wine-attrs-${i}" class="hidden" style="margin-top:.55rem;padding:.7rem;background:rgba(0,0,0,.18);border:1px solid var(--gb);border-radius:8px;">
-            <div style="font-size:.76rem;color:var(--smoke);margin-bottom:.55rem;">Choose which details tasters can see</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem;">${attributeControls}</div>
+        <div class="tv-wrap">
+          <button class="tv-head" type="button" aria-expanded="false" aria-controls="wine-attrs-${i}" onclick="toggleWineAttributeControls(${i},this)">
+            <span class="tv-icon"><svg class="ico"><use href="#ico-reveal"/></svg></span>
+            <span class="tv-head-copy">
+              <span class="tv-title">Taster visibility</span>
+              <span class="tv-summary" data-visibility-summary aria-live="polite">${visibleAttributeCount} of ${WINE_ATTRIBUTE_FIELDS.length} details shown · Syncs live</span>
+            </span>
+            <span class="tv-count" data-visibility-count>${visibleAttributeCount} / ${WINE_ATTRIBUTE_FIELDS.length}</span>
+            <span class="tv-chevron" aria-hidden="true"></span>
+          </button>
+          <div id="wine-attrs-${i}" class="tv-panel hidden">
+            <div class="tv-panel-intro">
+              <span class="tv-panel-label">Wine details</span>
+              <span class="tv-panel-hint">Choose what tasters can see</span>
+            </div>
+            <div role="group" aria-label="Wine attribute visibility">${attributeControls}</div>
+            <div class="tv-sync"><span class="tv-sync-dot" aria-hidden="true"></span>Changes sync automatically to tasters</div>
           </div>
         </div>
         <div id="edit-inline-${i}" style="display:none;"></div>
@@ -4220,17 +4291,17 @@ function renderOverview(s) {
 }
 
 const WINE_ATTRIBUTE_FIELDS = [
-  { key: 'vintage', label: 'Vintage' },
-  { key: 'type', label: 'Type' },
-  { key: 'country', label: 'Country' },
-  { key: 'region', label: 'Region' },
-  { key: 'appellation', label: 'Appellation' },
-  { key: 'classification', label: 'Classification' },
-  { key: 'grapes', label: 'Grape(s)' },
-  { key: 'abv', label: 'Alcohol' },
-  { key: 'price', label: 'Price' },
-  { key: 'notes', label: 'Host notes' },
-  { key: 'image', label: 'Wine image' }
+  { key: 'vintage', label: 'Vintage', description: 'Harvest year' },
+  { key: 'type', label: 'Type', description: 'Wine style' },
+  { key: 'country', label: 'Country', description: 'Place of origin' },
+  { key: 'region', label: 'Region', description: 'Wine region' },
+  { key: 'appellation', label: 'Appellation', description: 'Protected origin' },
+  { key: 'classification', label: 'Classification', description: 'Quality designation' },
+  { key: 'grapes', label: 'Grape(s)', description: 'Varieties used' },
+  { key: 'abv', label: 'Alcohol', description: 'Alcohol percentage' },
+  { key: 'price', label: 'Price', description: 'Purchase price' },
+  { key: 'notes', label: 'Host notes', description: 'Host-provided notes' },
+  { key: 'image', label: 'Wine image', description: 'Bottle or label image' }
 ];
 
 function wineAttributeVisible(wine, key) {
@@ -4244,17 +4315,55 @@ function toggleWineAttributeControls(i, button) {
   if (button) button.setAttribute('aria-expanded', String(open));
 }
 
-async function setWineAttributeVisibility(i, key, visible) {
+function updateWineVisibilitySummary(i) {
+  var panel = document.getElementById('wine-attrs-' + i);
+  if (!panel) return;
+  var shown = panel.querySelectorAll('.tv-state.is-shown').length;
+  var total = WINE_ATTRIBUTE_FIELDS.length;
+  var count = document.querySelector('#wine-row-' + i + ' [data-visibility-count]');
+  var summary = document.querySelector('#wine-row-' + i + ' [data-visibility-summary]');
+  if (count) count.textContent = shown + ' / ' + total;
+  if (summary) summary.textContent = shown + ' of ' + total + ' details shown · Syncs live';
+}
+
+async function setWineAttributeVisibility(i, key, visible, button) {
   if (!activeCode || !WINE_ATTRIBUTE_FIELDS.some(function(field) { return field.key === key; })) return;
+  var row = document.getElementById('wine-attribute-' + i + '-' + key);
+  var status = row && row.querySelector('[data-visibility-status]');
+  var field = WINE_ATTRIBUTE_FIELDS.find(function(item) { return item.key === key; });
+  var previousVisible = status ? status.textContent === 'Shown' : !visible;
+  if (button) button.disabled = true;
+  if (status) {
+    status.textContent = visible ? 'Shown' : 'Hidden';
+    status.classList.toggle('is-shown', visible);
+    status.classList.toggle('is-hidden', !visible);
+  }
+  if (button) {
+    button.setAttribute('aria-checked', String(visible));
+    button.setAttribute('aria-label', (visible ? 'Hide ' : 'Show ') + field.label + (visible ? ' from' : ' to') + ' tasters');
+    button.setAttribute('onclick', "setWineAttributeVisibility(" + i + ",'" + key + "'," + !visible + ",this)");
+  }
+  updateWineVisibilitySummary(i);
   try {
-    await dbPatch('sessions/' + activeCode, {
+    var result = await dbPatch('sessions/' + activeCode, {
       ['wines/' + i + '/hiddenAttributes/' + key]: !visible
     });
+    if (result === 'queued') showToast('Saved on this device. It will sync when connection returns.');
   } catch (e) {
-    var controls = document.getElementById('wine-attrs-' + i);
-    var checkbox = controls && controls.querySelector('input[data-attribute="' + key + '"]');
-    if (checkbox) checkbox.checked = !visible;
+    if (status) {
+      status.textContent = previousVisible ? 'Shown' : 'Hidden';
+      status.classList.toggle('is-shown', previousVisible);
+      status.classList.toggle('is-hidden', !previousVisible);
+    }
+    if (button) {
+      button.setAttribute('aria-checked', String(previousVisible));
+      button.setAttribute('aria-label', (previousVisible ? 'Hide ' : 'Show ') + field.label + (previousVisible ? ' from' : ' to') + ' tasters');
+      button.setAttribute('onclick', "setWineAttributeVisibility(" + i + ",'" + key + "'," + !previousVisible + ",this)");
+    }
+    updateWineVisibilitySummary(i);
     showToast('Could not update wine details. Please try again.', 'error');
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -4538,7 +4647,7 @@ async function unlockSession() {
       }
     }
 
-  });
+  }, { every: 1000 });
   document.getElementById('unlock-screen').classList.add('hidden');
   document.getElementById('taste-screen').classList.remove('hidden');
 }
@@ -5032,12 +5141,17 @@ function renderRevealArea(idx, data) {
           {k:'region',l:'Region',v:w.region},
           {k:'appellation',l:'Appellation',v:w.appellation},
           {k:'grapes',l:'Grape(s)',v:w.grapes},
-          {k:'abv',l:'Alcohol',v:w.abv}
+          {k:'abv',l:'Alcohol',v:w.abv},
+          {k:'price',l:'Price',v:w.price}
         ]
           .filter(m => m.v && wineAttributeVisible(w, m.k))
-          .map(m => `<div class="meta-item"><div class="meta-lbl">${m.l}</div><div class="meta-val">${m.v}</div></div>`)
+          .map(m => `<div class="meta-item"><div class="meta-lbl">${m.l}</div><div class="meta-val">${escHtml(String(m.v))}</div></div>`)
           .join('')}
       </div>
+      ${w.notes && wineAttributeVisible(w, 'notes') ? `<div style="margin-top:.9rem;padding:.75rem .9rem;background:rgba(226,194,125,.06);border:1px solid var(--gb);border-radius:10px;">
+        <div style="font-family:'Schibsted Grotesk',sans-serif;font-size:.76rem;letter-spacing:.01em;text-transform:uppercase;color:var(--smoke);margin-bottom:.35rem;">Host Notes</div>
+        <div style="font-style:italic;color:var(--pale-gold);font-size:.95rem;line-height:1.55;">${escHtml(String(w.notes))}</div>
+      </div>` : ''}
     </div>`;
   }
 }
